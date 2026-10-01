@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "author": "Nguyen Nhat Phi B2303842",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": -57.6, "left": 187.24, "attrs": {} },
+    { "type": "board-mfrc522", "id": "rfid1", "top": -60.25, "left": -178.96, "attrs": {} },
+    {
+      "type": "board-ssd1306",
+      "id": "oled1",
+      "top": 214.34,
+      "left": -124.57,
+      "attrs": { "i2cAddress": "0x3c" }
+    },
+    { "type": "wokwi-servo", "id": "servo1", "top": -290, "left": 460.8, "attrs": {} },
+    { "type": "wokwi-membrane-keypad", "id": "keypad1", "top": -98, "left": 437.6, "attrs": {} },
+    {
+      "type": "wokwi-buzzer",
+      "id": "bz1",
+      "top": -276,
+      "left": -180.6,
+      "attrs": { "volume": "0.1" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": -253.2,
+      "left": -44.2,
+      "attrs": { "color": "red" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": -216.85,
+      "left": 48,
+      "attrs": { "value": "330" }
+    },
+    { "type": "wokwi-slide-switch", "id": "sw1", "top": -293.2, "left": 243.1, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:3V3", "oled1:VCC", "orange", [ "h-19.05", "v144", "h-249.75" ] ],
+    [ "rfid1:3.3V", "esp:3V3", "orange", [ "h-19.2", "v-115.2", "h278.25" ] ],
+    [ "servo1:V+", "esp:5V", "#8f4814", [ "v0.1", "h-316.8", "v374.4" ] ],
+    [ "esp:GND.1", "oled1:GND", "black", [ "h0" ] ],
+    [ "esp:GND.1", "rfid1:GND", "black", [ "h-403.05", "v-67.2" ] ],
+    [ "esp:GND.2", "servo1:GND", "black", [ "v0" ] ],
+    [ "esp:GND.1", "bz1:1", "black", [ "h-28.65", "v-172.8", "h-220.8" ] ],
+    [ "esp:GND.1", "led1:C", "black", [ "h-28.65", "v-172.8", "h-182.8" ] ],
+    [ "esp:GND.2", "sw1:1", "black", [ "v-211.2", "h-38.4" ] ],
+    [ "rfid1:SCK", "esp:18", "violet", [ "h-9.6", "v172.8", "h480", "v-115.2" ] ],
+    [ "rfid1:MISO", "esp:19", "violet", [ "h-9.6", "v153.6", "h480", "v-124.8" ] ],
+    [ "rfid1:MOSI", "esp:23", "violet", [ "h-9.6", "v163.2", "h480", "v-182.4" ] ],
+    [ "esp:5", "rfid1:SDA", "violet", [ "h9.6", "v105.6", "h-480", "v-182.4" ] ],
+    [ "rfid1:RST", "esp:27", "violet", [ "h-28.8", "v86.4", "h384", "v-57.6" ] ],
+    [ "oled1:SCL", "esp:22", "violet", [ "h0.3", "v-19.2", "h374.4", "v-259.2" ] ],
+    [ "oled1:SDA", "esp:21", "violet", [ "v-19.2", "h364.87", "v-230.4" ] ],
+    [ "servo1:PWM", "esp:13", "violet", [ "h-307.2", "v326.6" ] ],
+    [ "keypad1:R1", "esp:32", "violet", [ "v28.8", "h-403.2", "v-278.4" ] ],
+    [ "keypad1:R2", "esp:33", "violet", [ "v28.8", "h-413.2", "v-268.8" ] ],
+    [ "keypad1:R3", "esp:25", "violet", [ "v28.8", "h-422.7", "v-259.2" ] ],
+    [ "keypad1:R4", "esp:26", "violet", [ "v28.8", "h-432.2", "v-249.6" ] ],
+    [ "keypad1:C1", "esp:14", "violet", [ "v19.2", "h-451.3", "v-220.8" ] ],
+    [ "keypad1:C2", "esp:16", "violet", [ "v19.2", "h-268.8", "v-220.8" ] ],
+    [ "keypad1:C3", "esp:17", "violet", [ "v19.2", "h-278.55", "v-230.4" ] ],
+    [ "keypad1:C4", "esp:12", "violet", [ "v19.2", "h-480.3", "v-211.2" ] ],
+    [ "bz1:2", "esp:15", "violet", [ "v105.6", "h470", "v201.6" ] ],
+    [ "led1:A", "r1:1", "green", [ "v0" ] ],
+    [ "r1:2", "esp:2", "violet", [ "h229.2", "v316.8" ] ],
+    [ "sw1:2", "esp:4", "violet", [ "v9.6", "h86.5", "v336" ] ]
+  ],
+  "dependencies": {}
+}
