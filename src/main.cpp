@@ -7,6 +7,7 @@
 #include <Adafruit_SSD1306.h>
 #include <ESP32Servo.h>
 
+// ===== Chân =====
 #define SS_PIN      5
 #define RST_PIN     27
 #define SERVO_PIN   13
@@ -14,6 +15,12 @@
 #define LED_PIN     2
 #define DOOR_PIN    4
 
+// ===== Hằng số =====
+const int           SERVO_LOCK_ANGLE   = 0;
+const int           SERVO_UNLOCK_ANGLE = 90;
+const unsigned long UNLOCK_DURATION_MS = 5000;   // mở 5s rồi tự khóa
+
+// ===== Đối tượng phần cứng =====
 MFRC522 rfid(SS_PIN, RST_PIN);
 Adafruit_SSD1306 oled(128, 64, &Wire, -1);
 Servo lockServo;
@@ -26,9 +33,20 @@ byte rowPins[ROWS] = {32, 33, 25, 26};
 byte colPins[COLS] = {14, 16, 17};
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
-bool opened = false;
-int lastDoor = -1;
+// ===== FSM =====
+enum State { STATE_LOCKED, STATE_UNLOCKED };
+State state = STATE_LOCKED;
+unsigned long stateEnterTime = 0;
 
+const char* stateName(State s) {
+  switch (s) {
+    case STATE_LOCKED:   return "STATE_LOCKED";
+    case STATE_UNLOCKED: return "STATE_UNLOCKED";
+  }
+  return "UNKNOWN";
+}
+
+// ===== Hiển thị =====
 void showOled(const String& l1, const String& l2 = "") {
   oled.clearDisplay();
   oled.setTextSize(1);
@@ -38,8 +56,70 @@ void showOled(const String& l1, const String& l2 = "") {
   oled.display();
 }
 
-void beep(int ms) {
-  digitalWrite(BUZZER_PIN, HIGH); delay(ms); digitalWrite(BUZZER_PIN, LOW);
+// ===== Còi non-blocking =====
+unsigned long beepEndTime = 0;
+
+void beepStart(unsigned long ms) {
+  digitalWrite(BUZZER_PIN, HIGH);
+  beepEndTime = millis() + ms;
+}
+
+void beepUpdate() {
+  if (beepEndTime != 0 && (long)(millis() - beepEndTime) >= 0) {
+    digitalWrite(BUZZER_PIN, LOW);
+    beepEndTime = 0;
+  }
+}
+
+// ===== Chuyển trạng thái: nơi thay đổi state =====
+void enterState(State next) {
+  Serial.printf("[FSM] %s -> %s\r\n", stateName(state), stateName(next));
+  state = next;
+  stateEnterTime = millis();
+
+  switch (state) {
+    case STATE_LOCKED:
+      lockServo.write(SERVO_LOCK_ANGLE);
+      digitalWrite(LED_PIN, LOW);
+      showOled("Smart Access", "Locked");
+      break;
+
+    case STATE_UNLOCKED:
+      lockServo.write(SERVO_UNLOCK_ANGLE);
+      digitalWrite(LED_PIN, HIGH);
+      showOled("Smart Access", "Unlocked");
+      beepStart(100);
+      break;
+  }
+}
+
+// ===== Sự kiện đầu vào tạm thời =====
+// Trả về true nếu có "yêu cầu mở cửa"
+bool checkUnlockRequest() {
+  char k = keypad.getKey();
+  if (k) {
+    Serial.printf("Phim: %c\r\n", k);
+    if (k == '#') return true;
+  }
+  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    Serial.println("Phat hien the RFID");
+    rfid.PICC_HaltA();
+    return true;
+  }
+  return false;
+}
+
+// ===== Xử lý theo từng trạng thái =====
+void handleLocked() {
+  if (checkUnlockRequest()) {
+    enterState(STATE_UNLOCKED);
+  }
+}
+
+void handleUnlocked() {
+  if (millis() - stateEnterTime > UNLOCK_DURATION_MS) {
+    enterState(STATE_LOCKED);
+  }
 }
 
 void setup() {
@@ -55,44 +135,15 @@ void setup() {
   oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
 
   lockServo.attach(SERVO_PIN);
-  lockServo.write(0);
 
-  showOled("Smart Access", "Test phan cung");
-  Serial.println("San sang. Thu: phim, the, cong tac cua.");
+  enterState(STATE_LOCKED); // trạng thái khởi đầu
 }
 
 void loop() {
-  // 1) Keypad
-  char k = keypad.getKey();
-  if (k) {
-    Serial.print("Phim: "); Serial.println(k);
-    showOled("Phim bam:", String(k));
-    beep(60);
-    if (k == '#') {                 // '#' de thu Servo + LED
-      opened = !opened;
-      lockServo.write(opened ? 90 : 0);
-      digitalWrite(LED_PIN, opened);
-    }
-  }
+  beepUpdate();
 
-  // 2) RFID
-  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
-    String uid = "";
-    for (byte i = 0; i < rfid.uid.size; i++) {
-      if (rfid.uid.uidByte[i] < 0x10) uid += "0";
-      uid += String(rfid.uid.uidByte[i], HEX);
-      if (i < rfid.uid.size - 1) uid += " ";
-    }
-    uid.toUpperCase();
-    Serial.println("UID: " + uid);
-    showOled("The RFID:", uid);
-    rfid.PICC_HaltA();
-  }
-
-  // 3) Cong tac cua
-  int d = digitalRead(DOOR_PIN);
-  if (d != lastDoor) {
-    lastDoor = d;
-    Serial.println(d == LOW ? "Cua: DONG (LOW)" : "Cua: MO (HIGH)");
+  switch (state) {
+    case STATE_LOCKED:   handleLocked();   break;
+    case STATE_UNLOCKED: handleUnlocked(); break;
   }
 }
