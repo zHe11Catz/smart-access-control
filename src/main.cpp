@@ -1,77 +1,34 @@
+// ====================================================================
+//  ----- Khung FSM -----
+//  Quy tắc:
+//   1. Mọi chuyển trạng thái chỉ qua enterState().
+//   2. Không dùng delay().
+//   3. Việc phần cứng nằm trong module riêng, main.cpp chỉ điều phối.
+// ====================================================================
 #include <Arduino.h>
-#include <SPI.h>
-#include <MFRC522.h>
-#include <Keypad.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include <ESP32Servo.h>
+#include "config.h"
+#include "auth_input.h"
+#include "outputs.h"
+#include "alerts_door.h"
 
-// ===== Chân =====
-#define SS_PIN      5
-#define RST_PIN     27
-#define SERVO_PIN   13
-#define BUZZER_PIN  15
-#define LED_PIN     2
-#define DOOR_PIN    4
-
-// ===== Hằng số =====
-const int           SERVO_LOCK_ANGLE   = 0;
-const int           SERVO_UNLOCK_ANGLE = 90;
-const unsigned long UNLOCK_DURATION_MS = 5000;   // mở 5s rồi tự khóa
-
-// ===== Đối tượng phần cứng =====
-MFRC522 rfid(SS_PIN, RST_PIN);
-Adafruit_SSD1306 oled(128, 64, &Wire, -1);
-Servo lockServo;
-
-const byte ROWS = 4, COLS = 3;
-char keys[ROWS][COLS] = {
-  {'1','2','3'}, {'4','5','6'}, {'7','8','9'}, {'*','0','#'}
-};
-byte rowPins[ROWS] = {32, 33, 25, 26};
-byte colPins[COLS] = {14, 16, 17};
-Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
-
-// ===== FSM =====
-enum State { STATE_LOCKED, STATE_UNLOCKED };
 State state = STATE_LOCKED;
 unsigned long stateEnterTime = 0;
+int failCount = 0;
+static unsigned long doorOpenSince = 0;
 
 const char* stateName(State s) {
   switch (s) {
-    case STATE_LOCKED:   return "STATE_LOCKED";
-    case STATE_UNLOCKED: return "STATE_UNLOCKED";
+    case STATE_LOCKED:            return "STATE_LOCKED";
+    case STATE_PIN_INPUT:         return "STATE_PIN_INPUT";
+    case STATE_UNLOCKED:          return "STATE_UNLOCKED";
+    case STATE_SECURITY_LOCKOUT:  return "STATE_SECURITY_LOCKOUT";
+    case STATE_TAMPER_ALARM:      return "STATE_TAMPER_ALARM";
+    case STATE_DOOR_AJAR_WARNING: return "STATE_DOOR_AJAR_WARNING";
   }
   return "UNKNOWN";
 }
 
-// ===== Hiển thị =====
-void showOled(const String& l1, const String& l2 = "") {
-  oled.clearDisplay();
-  oled.setTextSize(1);
-  oled.setTextColor(SSD1306_WHITE);
-  oled.setCursor(0, 0);  oled.println(l1);
-  oled.setCursor(0, 20); oled.println(l2);
-  oled.display();
-}
-
-// ===== Còi non-blocking =====
-unsigned long beepEndTime = 0;
-
-void beepStart(unsigned long ms) {
-  digitalWrite(BUZZER_PIN, HIGH);
-  beepEndTime = millis() + ms;
-}
-
-void beepUpdate() {
-  if (beepEndTime != 0 && (long)(millis() - beepEndTime) >= 0) {
-    digitalWrite(BUZZER_PIN, LOW);
-    beepEndTime = 0;
-  }
-}
-
-// ===== Chuyển trạng thái: nơi thay đổi state =====
+// ---------- Entry action: chạy 1 lần khi vào trạng thái ----------
 void enterState(State next) {
   Serial.printf("[FSM] %s -> %s\r\n", stateName(state), stateName(next));
   state = next;
@@ -79,71 +36,81 @@ void enterState(State next) {
 
   switch (state) {
     case STATE_LOCKED:
-      lockServo.write(SERVO_LOCK_ANGLE);
-      digitalWrite(LED_PIN, LOW);
-      showOled("Smart Access", "Locked");
+      lockDoor();
+      ledSet(false);
+      showLocked();
       break;
 
     case STATE_UNLOCKED:
-      lockServo.write(SERVO_UNLOCK_ANGLE);
-      digitalWrite(LED_PIN, HIGH);
-      showOled("Smart Access", "Unlocked");
-      beepStart(100);
+      unlockDoor();
+      ledSet(true); // TODO(): LED đỏ dùng cho báo động, cần đổi sau
+      showUnlocked();
+      beepOnce(100);
+      doorOpenSince = 0;
+      break;
+
+    case STATE_PIN_INPUT:         // TODO(A): pinClear(), showPinInput(0)
+      break;
+    case STATE_SECURITY_LOCKOUT:  // TODO(A+B+C): alarmStart(), khóa 30s, showLockout()
+      break;
+    case STATE_TAMPER_ALARM:      // TODO(C+B): alarmStart(), ledBlinkStart(), showTamper()
+      break;
+    case STATE_DOOR_AJAR_WARNING: // TODO(C+B): reminderStart(), showDoorAjar()
       break;
   }
 }
 
-// ===== Sự kiện đầu vào tạm thời =====
-// Trả về true nếu có "yêu cầu mở cửa"
-bool checkUnlockRequest() {
-  char k = keypad.getKey();
-  if (k) {
-    Serial.printf("Phim: %c\r\n", k);
-    if (k == '#') return true;
-  }
-  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
-    Serial.println("Phat hien the RFID");
-    rfid.PICC_HaltA();
-    return true;
-  }
-  return false;
-}
-
-// ===== Xử lý theo từng trạng thái =====
+// ---------- Xử lý theo từng trạng thái (chạy mỗi vòng loop) ----------
 void handleLocked() {
-  if (checkUnlockRequest()) {
+  char key;
+  InputEvent evt = pollInput(key);
+
+  if (evt == EVT_CARD_VALID) {
+    failCount = 0;
+    enterState(STATE_UNLOCKED);
+  }
+  // TODO(A): EVT_CARD_INVALID -> failCount++, showError, beepError
+  // TODO(A): EVT_KEY_DIGIT -> pinClear(), pinAppend(key), enterState(STATE_PIN_INPUT)
+  // TODO(C): doorIsOpen() khi không có lệnh mở -> enterState(STATE_TAMPER_ALARM)
+  else if (evt == EVT_KEY_HASH) {
+    // Để test tạm thời: '#' mở cửa. Xóa khi làm xong PIN_INPUT.
     enterState(STATE_UNLOCKED);
   }
 }
 
 void handleUnlocked() {
-  if (millis() - stateEnterTime > UNLOCK_DURATION_MS) {
-    enterState(STATE_LOCKED);
+  if (doorIsOpen()) {
+    if (doorOpenSince == 0) doorOpenSince = millis();
+    if (millis() - doorOpenSince > AJAR_TIMEOUT_MS) enterState(STATE_DOOR_AJAR_WARNING);
+    return;
   }
+  doorOpenSince = 0;
+  if (millis() - stateEnterTime > UNLOCK_DURATION_MS) enterState(STATE_LOCKED);
 }
 
+void handlePinInput()        { /* TODO(A): nhận digit, '#' kiểm tra PIN, timeout PIN_TIMEOUT_MS */ }
+void handleSecurityLockout() { /* TODO(A): hết LOCKOUT_DURATION_MS -> failCount=0, về LOCKED */ }
+void handleTamperAlarm()     { /* TODO(C): xử lý/thoát báo động cạy cửa */ }
+void handleDoorAjar()        { /* TODO(C): doorIsOpen()==false -> reminderStop(), về LOCKED */ }
+
+// ---------- Arduino ----------
 void setup() {
   Serial.begin(115200);
-  pinMode(BUZZER_PIN, OUTPUT);
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(DOOR_PIN, INPUT_PULLUP);
-
-  SPI.begin();
-  rfid.PCD_Init();
-
-  Wire.begin(21, 22);
-  oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-
-  lockServo.attach(SERVO_PIN);
-
+  alertsInit();
+  authInit();
+  outputsInit();
   enterState(STATE_LOCKED); // trạng thái khởi đầu
 }
 
 void loop() {
-  beepUpdate();
+  alertsUpdate();
 
   switch (state) {
-    case STATE_LOCKED:   handleLocked();   break;
-    case STATE_UNLOCKED: handleUnlocked(); break;
+    case STATE_LOCKED:            handleLocked();          break;
+    case STATE_PIN_INPUT:         handlePinInput();        break;
+    case STATE_UNLOCKED:          handleUnlocked();        break;
+    case STATE_SECURITY_LOCKOUT:  handleSecurityLockout(); break;
+    case STATE_TAMPER_ALARM:      handleTamperAlarm();     break;
+    case STATE_DOOR_AJAR_WARNING: handleDoorAjar();        break;
   }
 }
