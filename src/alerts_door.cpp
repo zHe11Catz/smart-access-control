@@ -51,45 +51,39 @@ void alertsUpdate()
     doorDebouncedState = (rawDoor == HIGH);
   }
 
-  // 2. Pattern còi báo động khẩn (Alarm)
+  // 2. Tính mức còi mong muốn theo ưu tiên: Alarm > Reminder > BeepOnce
+  bool buzzerOn = false;
+
   if (alarmActive)
   {
     if (millis() - lastAlarmToggle >= ALARM_BEEP_MS)
     {
       lastAlarmToggle = millis();
       alarmBuzzerState = !alarmBuzzerState;
-      digitalWrite(BUZZER_PIN, alarmBuzzerState ? HIGH : LOW);
     }
+    buzzerOn = alarmBuzzerState;
   }
-
-  // 3. Pattern còi nhắc nhở quên khi đóng cửa (Reminder)
   else if (reminderActive)
   {
     unsigned long elapsed = millis() - reminderCycleStart;
     if (elapsed >= REMINDER_PERIOD_MS)
     {
-      reminderCycleStart = millis();
-      reminderBuzzerState = true;
-      digitalWrite(BUZZER_PIN, HIGH);
+      reminderCycleStart += REMINDER_PERIOD_MS; // += để tránh trôi thời gian
+      elapsed = millis() - reminderCycleStart;
     }
-    else if (reminderBuzzerState && elapsed >= REMINDER_BEEP_MS)
-    {
-      reminderBuzzerState = false;
-      digitalWrite(BUZZER_PIN, LOW);
-    }
+    buzzerOn = (elapsed < REMINDER_BEEP_MS);
   }
 
-  // 4. Còi bíp đơn lẻ (beepOnce / beepError)
-  else if (beepEndTime != 0)
+  // 3. Bíp đơn lẻ: chỉ hết hạn độc lập, không bị chặn bởi nhánh trên
+  if (beepEndTime != 0)
   {
-    if ((long)(millis() - beepEndTime) >= 0)
-    {
-      digitalWrite(BUZZER_PIN, LOW);
-      beepEndTime = 0;
-    }
+    if ((long)(millis() - beepEndTime) >= 0) beepEndTime = 0;
+    else buzzerOn = true;
   }
 
-  // 5. Pattern chớp LED đỏ
+  digitalWrite(BUZZER_PIN, buzzerOn ? HIGH : LOW);
+
+  // 4. Pattern chớp LED đỏ
   if (ledBlinkActive)
   {
     if (millis() - lastLedToggle >= LED_BLINK_MS)
