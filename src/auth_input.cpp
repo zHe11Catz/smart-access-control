@@ -8,17 +8,17 @@
 static MFRC522 rfid(SS_PIN, RST_PIN);
 static String  cardUid = "";
 
-// TODO(A): điền UID thẻ hợp lệ
+// UID thẻ hợp lệ
 static const char* const VALID_UIDS[] = {
-  // "E2 4A 7B 1C",
+  "55 66 77 88",
 };
 static const size_t VALID_UID_COUNT = sizeof(VALID_UIDS) / sizeof(VALID_UIDS[0]);
 
 static bool isValidUid(const String& uid) {
-  // TODO(A): TẠM THỜI chấp nhận mọi thẻ. Thay bằng so sánh với VALID_UIDS.
-  (void)uid;
-  (void)VALID_UID_COUNT;
-  return true;
+  for (size_t i = 0; i < VALID_UID_COUNT; i++) {
+    if (uid == VALID_UIDS[i]) return true;
+  }
+  return false;
 }
 
 // ---------- Keypad ----------
@@ -39,6 +39,7 @@ static unsigned long lastKeyTime = 0;
 void pinClear() {
   pinLen = 0;
   pinBuf[0] = '\0';
+  lastKeyTime = millis();
 }
 
 bool pinAppend(char c) {
