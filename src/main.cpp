@@ -15,6 +15,8 @@ State state = STATE_LOCKED;
 unsigned long stateEnterTime = 0;
 int failCount = 0;
 static unsigned long doorOpenSince = 0;
+static unsigned long errorShownAt = 0;
+constexpr unsigned long ERROR_DISPLAY_MS = 2000;
 
 const char* stateName(State s) {
   switch (s) {
@@ -36,6 +38,7 @@ void enterState(State next) {
 
   switch (state) {
     case STATE_LOCKED:
+      errorShownAt = 0;
       lockDoor();
       ledSet(false);
       showLocked();
@@ -49,9 +52,13 @@ void enterState(State next) {
       doorOpenSince = 0;
       break;
 
-    case STATE_PIN_INPUT:         // TODO(A): pinClear(), showPinInput(0)
+    case STATE_PIN_INPUT:
+      showPinInput(pinLength());
       break;
-    case STATE_SECURITY_LOCKOUT:  // TODO(A+B+C): alarmStart(), khóa 30s, showLockout()
+    case STATE_SECURITY_LOCKOUT:
+      pinClear();
+      alarmStart();
+      showLockout(LOCKOUT_DURATION_MS / 1000);
       break;
     case STATE_TAMPER_ALARM:      // TODO(C+B): alarmStart(), ledBlinkStart(), showTamper()
       break;
@@ -60,22 +67,46 @@ void enterState(State next) {
   }
 }
 
+// ---------- Xử lý xác thực thất bại ----------
+void onAuthFail(const char* msg) {
+  if (failCount >= FAIL_COUNT_LOCKOUT) {
+    enterState(STATE_SECURITY_LOCKOUT);
+    return;
+  }
+  failCount++;
+  if (state != STATE_LOCKED) enterState(STATE_LOCKED);
+  showError(msg); // ghi đè màn hình "LOCKED"
+  beepError();
+  errorShownAt = millis();
+}
+
 // ---------- Xử lý theo từng trạng thái (chạy mỗi vòng loop) ----------
 void handleLocked() {
+  if (errorShownAt != 0 && millis() - errorShownAt > ERROR_DISPLAY_MS) {
+    errorShownAt = 0;
+    showLocked();
+  }
+
   char key;
   InputEvent evt = pollInput(key);
 
-  if (evt == EVT_CARD_VALID) {
-    failCount = 0;
-    enterState(STATE_UNLOCKED);
+  switch (evt) {
+    case EVT_CARD_VALID:
+      failCount = 0;
+      enterState(STATE_UNLOCKED);
+      break;
+    case EVT_CARD_INVALID:
+      onAuthFail("The khong dung");   // tối đa ~14 ký tự cho vừa OLED
+      break;
+    case EVT_KEY_DIGIT:
+      pinClear();
+      pinAppend(key);                 // lưu phím đầu tiên, đồng thời đặt mốc timeout
+      enterState(STATE_PIN_INPUT);
+      break;
+    default:
+      break;
   }
-  // TODO(A): EVT_CARD_INVALID -> failCount++, showError, beepError
-  // TODO(A): EVT_KEY_DIGIT -> pinClear(), pinAppend(key), enterState(STATE_PIN_INPUT)
-  // TODO(C): doorIsOpen() khi không có lệnh mở -> enterState(STATE_TAMPER_ALARM)
-  else if (evt == EVT_KEY_HASH) {
-    // Để test tạm thời: '#' mở cửa. Xóa khi làm xong PIN_INPUT.
-    enterState(STATE_UNLOCKED);
-  }
+  // TODO(): doorIsOpen() khi không có lệnh mở -> enterState(STATE_TAMPER_ALARM)
 }
 
 void handleUnlocked() {
@@ -88,8 +119,62 @@ void handleUnlocked() {
   if (millis() - stateEnterTime > UNLOCK_DURATION_MS) enterState(STATE_LOCKED);
 }
 
-void handlePinInput()        { /* TODO(A): nhận digit, '#' kiểm tra PIN, timeout PIN_TIMEOUT_MS */ }
-void handleSecurityLockout() { /* TODO(A): hết LOCKOUT_DURATION_MS -> failCount=0, về LOCKED */ }
+void handlePinInput() {
+  char key;
+  InputEvent evt = pollInput(key);
+
+  switch (evt) {
+    case EVT_KEY_DIGIT:
+      if (pinAppend(key)) showPinInput(pinLength());
+      break;
+
+    case EVT_KEY_STAR: // '*' = xóa PIN đang nhập
+      pinClear();
+      showPinInput(0);
+      break;
+
+    case EVT_KEY_HASH: // '#' = xác nhận
+      if (pinLength() == 0) break;
+      if (pinMatchesHome()) {
+        failCount = 0;
+        pinClear();
+        enterState(STATE_UNLOCKED);
+      } else {
+        pinClear();
+        onAuthFail("Sai ma PIN");
+      }
+      return;
+
+    default: // quẹt thẻ lúc đang nhập PIN: bỏ qua
+      break;
+  }
+
+  // Quá 10s không bấm phím -> hủy PIN
+  if (millis() - pinLastKeyTime() > PIN_TIMEOUT_MS) {
+    pinClear();
+    enterState(STATE_LOCKED);
+  }
+}
+
+void handleSecurityLockout() {
+  unsigned long elapsed = millis() - stateEnterTime;
+
+  if (elapsed >= LOCKOUT_DURATION_MS) {
+    alarmStop();
+    failCount = 0;
+    enterState(STATE_LOCKED);
+    return;
+  }
+
+  // Cập nhật đồng hồ đếm ngược mỗi giây
+  static uint8_t lastShown = 255;
+  uint8_t left = (LOCKOUT_DURATION_MS - elapsed + 999) / 1000;
+  if (left != lastShown) {
+    lastShown = left;
+    showLockout(left);
+  }
+}
+
 void handleTamperAlarm()     { /* TODO(C): xử lý/thoát báo động cạy cửa */ }
 void handleDoorAjar()        { /* TODO(C): doorIsOpen()==false -> reminderStop(), về LOCKED */ }
 
