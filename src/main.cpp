@@ -39,14 +39,17 @@ void enterState(State next) {
   switch (state) {
     case STATE_LOCKED:
       errorShownAt = 0;
+      alarmStop();
+      reminderStop();
       lockDoor();
       ledSet(false);
       showLocked();
       break;
 
     case STATE_UNLOCKED:
+      alarmStop();
       unlockDoor();
-      ledSet(true); // TODO(): LED đỏ dùng cho báo động, cần đổi sau
+      ledSet(false);
       showUnlocked();
       beepOnce(100);
       doorOpenSince = 0;
@@ -55,14 +58,22 @@ void enterState(State next) {
     case STATE_PIN_INPUT:
       showPinInput(pinLength());
       break;
+
     case STATE_SECURITY_LOCKOUT:
       pinClear();
       alarmStart();
       showLockout(LOCKOUT_DURATION_MS / 1000);
       break;
-    case STATE_TAMPER_ALARM:      // TODO(C+B): alarmStart(), ledBlinkStart(), showTamper()
+
+    case STATE_TAMPER_ALARM:
+      alarmStart();
+      ledBlinkStart();
+      showTamper();
       break;
-    case STATE_DOOR_AJAR_WARNING: // TODO(C+B): reminderStart(), showDoorAjar()
+
+    case STATE_DOOR_AJAR_WARNING:
+      reminderStart();
+      showDoorAjar();
       break;
   }
 }
@@ -82,6 +93,11 @@ void onAuthFail(const char* msg) {
 
 // ---------- Xử lý theo từng trạng thái (chạy mỗi vòng loop) ----------
 void handleLocked() {
+  if (doorIsOpen()) { 
+    enterState(STATE_TAMPER_ALARM);
+    return;
+  }
+  
   if (errorShownAt != 0 && millis() - errorShownAt > ERROR_DISPLAY_MS) {
     errorShownAt = 0;
     showLocked();
@@ -96,17 +112,16 @@ void handleLocked() {
       enterState(STATE_UNLOCKED);
       break;
     case EVT_CARD_INVALID:
-      onAuthFail("The khong dung");   // tối đa ~14 ký tự cho vừa OLED
+      onAuthFail("The khong dung");
       break;
     case EVT_KEY_DIGIT:
       pinClear();
-      pinAppend(key);                 // lưu phím đầu tiên, đồng thời đặt mốc timeout
+      pinAppend(key);
       enterState(STATE_PIN_INPUT);
       break;
     default:
       break;
   }
-  // TODO(): doorIsOpen() khi không có lệnh mở -> enterState(STATE_TAMPER_ALARM)
 }
 
 void handleUnlocked() {
@@ -175,8 +190,50 @@ void handleSecurityLockout() {
   }
 }
 
-void handleTamperAlarm()     { /* TODO(C): xử lý/thoát báo động cạy cửa */ }
-void handleDoorAjar()        { /* TODO(C): doorIsOpen()==false -> reminderStop(), về LOCKED */ }
+void handleTamperAlarm() {
+  char key;
+  InputEvent evt = pollInput(key);
+
+  switch (evt) {
+    case EVT_CARD_VALID: // quẹt đúng thẻ -> tắt báo động
+      failCount = 0;
+      pinClear();
+      enterState(STATE_UNLOCKED);
+      return;
+
+    case EVT_KEY_DIGIT:
+      pinAppend(key);
+      break;
+
+    case EVT_KEY_STAR:
+      pinClear();
+      break;
+
+    case EVT_KEY_HASH:
+      if (pinLength() == 0) break;
+      if (pinMatchesHome()) {
+        failCount = 0;
+        pinClear();
+        enterState(STATE_UNLOCKED);
+        return;
+      }
+      pinClear(); // sai PIN: báo động vẫn tiếp tục
+      break;
+
+    default: // thẻ sai: báo động vẫn tiếp tục
+      break;
+  }
+
+  if (pinLength() > 0 && millis() - pinLastKeyTime() > PIN_TIMEOUT_MS) {
+    pinClear();
+  }
+}
+
+void handleDoorAjar() {
+  if (!doorIsOpen()) {
+    enterState(STATE_LOCKED);
+  }
+}
 
 // ---------- Arduino ----------
 void setup() {
