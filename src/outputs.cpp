@@ -320,8 +320,17 @@ void showDoorAjar() {
 
   drawHeader("NHAC NHO AN TOAN");
 
-  drawCenteredText("CUA CHUA DONG!", 19, 2, SSD1306_WHITE);
-  drawCenteredText("Cua da mo qua 30s", 37, 1, SSD1306_WHITE);
+  // Icon tam giác cảnh báo tại (12, 20)
+  drawWarningIcon(12, 20);
+
+  // Text thông tin bên phải (size 1 để không tràn màn hình 128px)
+  oled.setTextSize(1);
+  oled.setTextColor(SSD1306_WHITE);
+  oled.setCursor(40, 22);
+  oled.print("CUA CHUA DONG!");
+
+  oled.setCursor(40, 35);
+  oled.print("Cua mo qua 30s");
 
   drawFooter("Vui long khep cua lai");
   oled.display();
