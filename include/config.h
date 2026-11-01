@@ -47,3 +47,24 @@ constexpr unsigned long REMINDER_BEEP_MS   = 100;  // độ dài mỗi bíp nh�
 constexpr unsigned long REMINDER_PERIOD_MS = 2000; // chu kỳ bíp nhắc
 constexpr unsigned long LED_BLINK_MS       = 250;
 constexpr unsigned long DOOR_DEBOUNCE_MS   = 50;
+
+// ---------- WiFi / MQTT ----------
+#define WIFI_SSID "Wokwi-GUEST" // mạng WiFi giả lập của Wokwi, không cần mật khẩu
+#define WIFI_PASS ""
+
+#define MQTT_BROKER "broker.hivemq.com"
+constexpr uint16_t MQTT_PORT = 1883;
+#define DEVICE_ID "SMART-ACCESS-CONTROL"
+#define MQTT_CLIENT_ID DEVICE_ID
+
+#define TOPIC_BASE "ct295/smart-access-control"
+#define TOPIC_STATE  TOPIC_BASE "/state"
+#define TOPIC_ACCESS TOPIC_BASE "/access"
+#define TOPIC_ALERT  TOPIC_BASE "/alert"
+
+constexpr unsigned long MQTT_RETRY_MS    = 5000;  // thử kết nối lại mỗi 5s
+constexpr unsigned long STATE_PUBLISH_MS = 10000; // publish state định kỳ mỗi 10s
+
+// Để mqtt_messages.cpp đọc được trạng thái hiện tại
+extern State state;
+const char* stateName(State s);
