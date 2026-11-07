@@ -10,6 +10,7 @@
 #include "auth_input.h"
 #include "outputs.h"
 #include "alerts_door.h"
+#include "mqtt.h"
 
 State state = STATE_LOCKED;
 unsigned long stateEnterTime = 0;
@@ -241,11 +242,13 @@ void setup() {
   alertsInit();
   authInit();
   outputsInit();
+  mqttInit();
   enterState(STATE_LOCKED); // trạng thái khởi đầu
 }
 
 void loop() {
   alertsUpdate();
+  mqttLoop();
 
   switch (state) {
     case STATE_LOCKED:            handleLocked();          break;
