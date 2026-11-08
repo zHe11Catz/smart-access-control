@@ -33,6 +33,7 @@ const char* stateName(State s) {
 
 // ---------- Entry action: chạy 1 lần khi vào trạng thái ----------
 void enterState(State next) {
+  const bool stateChanged = (state != next);
   Serial.printf("[FSM] %s -> %s\r\n", stateName(state), stateName(next));
   state = next;
   stateEnterTime = millis();
@@ -64,28 +65,49 @@ void enterState(State next) {
       pinClear();
       alarmStart();
       showLockout(LOCKOUT_DURATION_MS / 1000);
-      publishAlert("BRUTE_FORCE_LOCKOUT", "CRITICAL", "Phat hien nhap sai PIN/The 3 lan lien tiep. Khoa he thong 30 giay!", "KEYPAD_DISABLED_BUZZER_ACTIVE");
+      if (stateChanged) {
+        publishAlert("BRUTE_FORCE_LOCKOUT", "CRITICAL",
+                     "Phat hien nhap sai PIN/The 3 lan lien tiep. Khoa he thong 30 giay!",
+                     "KEYPAD_DISABLED_BUZZER_ACTIVE");
+      }
       break;
 
     case STATE_TAMPER_ALARM:
       alarmStart();
       ledBlinkStart();
       showTamper();
-      publishAlert("DOOR_TAMPER", "CRITICAL", "Phat hien cay cua trai phep!", "SIREN_ACTIVE_LED_BLINK");
+      if (stateChanged) {
+        publishAlert("TAMPER", "CRITICAL",
+                     "Phat hien cay cua trai phep!",
+                     "BUZZER_ACTIVE_LED_BLINKING");
+      }
       break;
 
     case STATE_DOOR_AJAR_WARNING:
       reminderStart();
       showDoorAjar();
-      publishAlert("DOOR_LEFT_OPEN", "WARNING", "Cua mo qua 30 giay chua dong", "REMINDER_BUZZER_ACTIVE");
+      if (stateChanged) {
+        publishAlert("DOOR_AJAR", "WARNING",
+                     "Cua mo qua 30 giay. Vui long dong cua!",
+                     "REMINDER_BUZZER_ACTIVE");
+      }
       break;
   }
 
-  publishState();
+  if (stateChanged) {
+    publishState();
+  }
 }
 
 // ---------- Xử lý xác thực thất bại ----------
 void onAuthFail(const char* msg) {
+  // Gửi log sự kiện xác thực thất bại qua MQTT
+  if (strcmp(msg, "The khong dung") == 0) {
+    publishAccess("RFID_CARD", lastCardUid().c_str(), false);
+  } else {
+    publishAccess("PIN", "", false);
+  }
+
   if (failCount >= FAIL_COUNT_LOCKOUT) {
     enterState(STATE_SECURITY_LOCKOUT);
     return;
