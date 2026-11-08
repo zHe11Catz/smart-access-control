@@ -10,6 +10,7 @@
 #include "auth_input.h"
 #include "outputs.h"
 #include "alerts_door.h"
+#include "mqtt.h"
 
 State state = STATE_LOCKED;
 unsigned long stateEnterTime = 0;
@@ -63,19 +64,24 @@ void enterState(State next) {
       pinClear();
       alarmStart();
       showLockout(LOCKOUT_DURATION_MS / 1000);
+      publishAlert("BRUTE_FORCE_LOCKOUT", "CRITICAL", "Phat hien nhap sai PIN/The 3 lan lien tiep. Khoa he thong 30 giay!", "KEYPAD_DISABLED_BUZZER_ACTIVE");
       break;
 
     case STATE_TAMPER_ALARM:
       alarmStart();
       ledBlinkStart();
       showTamper();
+      publishAlert("DOOR_TAMPER", "CRITICAL", "Phat hien cay cua trai phep!", "SIREN_ACTIVE_LED_BLINK");
       break;
 
     case STATE_DOOR_AJAR_WARNING:
       reminderStart();
       showDoorAjar();
+      publishAlert("DOOR_LEFT_OPEN", "WARNING", "Cua mo qua 30 giay chua dong", "REMINDER_BUZZER_ACTIVE");
       break;
   }
+
+  publishState();
 }
 
 // ---------- Xử lý xác thực thất bại ----------
@@ -109,6 +115,7 @@ void handleLocked() {
   switch (evt) {
     case EVT_CARD_VALID:
       failCount = 0;
+      publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       enterState(STATE_UNLOCKED);
       break;
     case EVT_CARD_INVALID:
@@ -153,6 +160,7 @@ void handlePinInput() {
       if (pinMatchesHome()) {
         failCount = 0;
         pinClear();
+        publishAccess("PIN", "", true);
         enterState(STATE_UNLOCKED);
       } else {
         pinClear();
@@ -198,6 +206,7 @@ void handleTamperAlarm() {
     case EVT_CARD_VALID: // quẹt đúng thẻ -> tắt báo động
       failCount = 0;
       pinClear();
+      publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       enterState(STATE_UNLOCKED);
       return;
 
@@ -214,6 +223,7 @@ void handleTamperAlarm() {
       if (pinMatchesHome()) {
         failCount = 0;
         pinClear();
+        publishAccess("PIN", "", true);
         enterState(STATE_UNLOCKED);
         return;
       }
@@ -241,11 +251,19 @@ void setup() {
   alertsInit();
   authInit();
   outputsInit();
+  mqttInit();
   enterState(STATE_LOCKED); // trạng thái khởi đầu
 }
 
 void loop() {
   alertsUpdate();
+  mqttLoop();
+
+  static unsigned long lastStatePub = 0;
+  if (millis() - lastStatePub >= STATE_PUBLISH_MS) {
+    lastStatePub = millis();
+    publishState();
+  }
 
   switch (state) {
     case STATE_LOCKED:            handleLocked();          break;
