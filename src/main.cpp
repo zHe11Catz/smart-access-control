@@ -21,12 +21,12 @@ constexpr unsigned long ERROR_DISPLAY_MS = 2000;
 
 const char* stateName(State s) {
   switch (s) {
-    case STATE_LOCKED:            return "STATE_LOCKED";
-    case STATE_PIN_INPUT:         return "STATE_PIN_INPUT";
-    case STATE_UNLOCKED:          return "STATE_UNLOCKED";
-    case STATE_SECURITY_LOCKOUT:  return "STATE_SECURITY_LOCKOUT";
-    case STATE_TAMPER_ALARM:      return "STATE_TAMPER_ALARM";
-    case STATE_DOOR_AJAR_WARNING: return "STATE_DOOR_AJAR_WARNING";
+    case STATE_LOCKED:            return "LOCKED";
+    case STATE_PIN_INPUT:         return "PIN_INPUT";
+    case STATE_UNLOCKED:          return "UNLOCKED";
+    case STATE_SECURITY_LOCKOUT:  return "SECURITY_LOCKOUT";
+    case STATE_TAMPER_ALARM:      return "TAMPER_ALARM";
+    case STATE_DOOR_AJAR_WARNING: return "DOOR_AJAR_WARNING";
   }
   return "UNKNOWN";
 }

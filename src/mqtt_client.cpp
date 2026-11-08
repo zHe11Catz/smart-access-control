@@ -127,8 +127,6 @@ void mqttLoop() {
     mqttWasConnected = true;
     // Đã kết nối, duy trì vòng lặp xử lý gói tin
     mqttClient.loop();
-
-
   }
 }
 
