@@ -17,6 +17,7 @@ unsigned long stateEnterTime = 0;
 int failCount = 0;
 static unsigned long doorOpenSince = 0;
 static unsigned long errorShownAt = 0;
+static unsigned long lastStatePublishAt = 0;
 constexpr unsigned long ERROR_DISPLAY_MS = 2000;
 
 const char* stateName(State s) {
@@ -139,6 +140,7 @@ void handleLocked() {
       failCount = 0;
       publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       enterState(STATE_UNLOCKED);
+      publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       break;
     case EVT_CARD_INVALID:
       onAuthFail("The khong dung");
@@ -184,6 +186,7 @@ void handlePinInput() {
         pinClear();
         publishAccess("PIN", "", true);
         enterState(STATE_UNLOCKED);
+        publishAccess("PIN", "", true);
       } else {
         pinClear();
         onAuthFail("Sai ma PIN");
@@ -230,6 +233,7 @@ void handleTamperAlarm() {
       pinClear();
       publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       enterState(STATE_UNLOCKED);
+      publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       return;
 
     case EVT_KEY_DIGIT:
@@ -247,6 +251,7 @@ void handleTamperAlarm() {
         pinClear();
         publishAccess("PIN", "", true);
         enterState(STATE_UNLOCKED);
+        publishAccess("PIN", "", true);
         return;
       }
       pinClear(); // sai PIN: báo động vẫn tiếp tục
@@ -275,6 +280,8 @@ void setup() {
   outputsInit();
   mqttInit();
   enterState(STATE_LOCKED); // trạng thái khởi đầu
+  publishState();
+  lastStatePublishAt = millis();
 }
 
 void loop() {
@@ -294,5 +301,10 @@ void loop() {
     case STATE_SECURITY_LOCKOUT:  handleSecurityLockout(); break;
     case STATE_TAMPER_ALARM:      handleTamperAlarm();     break;
     case STATE_DOOR_AJAR_WARNING: handleDoorAjar();        break;
+  }
+  const unsigned long mqttNow = millis();
+  if (mqttNow - lastStatePublishAt >= STATE_PUBLISH_MS) {
+    publishState();
+    lastStatePublishAt = mqttNow;
   }
 }
