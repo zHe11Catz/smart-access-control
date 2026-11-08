@@ -61,6 +61,7 @@ constexpr uint16_t MQTT_PORT = 1883;
 #define TOPIC_STATE  TOPIC_BASE "/state"
 #define TOPIC_ACCESS TOPIC_BASE "/access"
 #define TOPIC_ALERT  TOPIC_BASE "/alert"
+#define TOPIC_STATUS TOPIC_BASE "/status"
 
 constexpr unsigned long MQTT_RETRY_MS    = 5000;  // thử kết nối lại mỗi 5s
 constexpr unsigned long STATE_PUBLISH_MS = 10000; // publish state định kỳ mỗi 10s
