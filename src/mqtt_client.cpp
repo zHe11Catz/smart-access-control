@@ -7,7 +7,6 @@ static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
 
 static unsigned long lastReconnectAttempt = 0;
-static unsigned long lastStatePublish = 0;
 static char clientId[64] = {0};
 
 static const char* getClientId() {
@@ -48,7 +47,6 @@ void mqttInit() {
   mqttClient.setBufferSize(512);
 
   lastReconnectAttempt = 0;
-  lastStatePublish = 0;
 }
 
 void mqttLoop() {
@@ -81,7 +79,6 @@ void mqttLoop() {
         Serial.println("[MQTT] Connected to HiveMQ successfully!");
         // Gửi bản tin thử nghiệm để MQTT Explorer nhận được ngay
         publishTestMessage();
-        lastStatePublish = now;
       } else {
         Serial.printf("[MQTT] Connection failed, rc=%d. Retrying in %lu ms...\r\n",
                       mqttClient.state(), MQTT_RETRY_MS);
@@ -91,16 +88,7 @@ void mqttLoop() {
     // Đã kết nối, duy trì vòng lặp xử lý gói tin
     mqttClient.loop();
 
-    // Định kỳ mỗi 10s publish bản tin trạng thái / heartbeat
-    if (now - lastStatePublish >= STATE_PUBLISH_MS) {
-      lastStatePublish = now;
-      char heartbeat[192];
-      snprintf(heartbeat, sizeof(heartbeat),
-               "{\"device\":\"%s\",\"status\":\"online\",\"uptime\":%lu,\"wifi_rssi\":%d}",
-               DEVICE_ID, now / 1000, WiFi.RSSI());
-      mqttPublish(TOPIC_BASE "/test", heartbeat, false);
-      publishState();
-    }
+
   }
 }
 
