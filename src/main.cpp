@@ -34,7 +34,7 @@ const char* stateName(State s) {
 
 // ---------- Entry action: chạy 1 lần khi vào trạng thái ----------
 void enterState(State next) {
-  const bool mqttStateChanged = state != next;
+  const bool stateChanged = (state != next);
   Serial.printf("[FSM] %s -> %s\r\n", stateName(state), stateName(next));
   state = next;
   stateEnterTime = millis();
@@ -66,7 +66,7 @@ void enterState(State next) {
       pinClear();
       alarmStart();
       showLockout(LOCKOUT_DURATION_MS / 1000);
-      if (mqttStateChanged) {
+      if (stateChanged) {
         publishAlert("BRUTE_FORCE_LOCKOUT", "CRITICAL",
                      "Phat hien nhap sai PIN/The 3 lan lien tiep. Khoa he thong 30 giay!",
                      "KEYPAD_DISABLED_BUZZER_ACTIVE");
@@ -77,9 +77,9 @@ void enterState(State next) {
       alarmStart();
       ledBlinkStart();
       showTamper();
-      if (mqttStateChanged) {
+      if (stateChanged) {
         publishAlert("TAMPER", "CRITICAL",
-                     "Phat hien cua mo khi dang khoa!",
+                     "Phat hien cay cua trai phep!",
                      "BUZZER_ACTIVE_LED_BLINKING");
       }
       break;
@@ -87,21 +87,28 @@ void enterState(State next) {
     case STATE_DOOR_AJAR_WARNING:
       reminderStart();
       showDoorAjar();
-      if (mqttStateChanged) {
+      if (stateChanged) {
         publishAlert("DOOR_AJAR", "WARNING",
                      "Cua mo qua 30 giay. Vui long dong cua!",
                      "REMINDER_BUZZER_ACTIVE");
       }
       break;
   }
-  if (mqttStateChanged) {
+
+  if (stateChanged) {
     publishState();
-    lastStatePublishAt = millis();
   }
 }
 
 // ---------- Xử lý xác thực thất bại ----------
 void onAuthFail(const char* msg) {
+  // Gửi log sự kiện xác thực thất bại qua MQTT
+  if (strcmp(msg, "The khong dung") == 0) {
+    publishAccess("RFID_CARD", lastCardUid().c_str(), false);
+  } else {
+    publishAccess("PIN", "", false);
+  }
+
   if (failCount >= FAIL_COUNT_LOCKOUT) {
     enterState(STATE_SECURITY_LOCKOUT);
     return;
@@ -131,6 +138,7 @@ void handleLocked() {
   switch (evt) {
     case EVT_CARD_VALID:
       failCount = 0;
+      publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       enterState(STATE_UNLOCKED);
       publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       break;
@@ -176,6 +184,7 @@ void handlePinInput() {
       if (pinMatchesHome()) {
         failCount = 0;
         pinClear();
+        publishAccess("PIN", "", true);
         enterState(STATE_UNLOCKED);
         publishAccess("PIN", "", true);
       } else {
@@ -222,6 +231,7 @@ void handleTamperAlarm() {
     case EVT_CARD_VALID: // quẹt đúng thẻ -> tắt báo động
       failCount = 0;
       pinClear();
+      publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       enterState(STATE_UNLOCKED);
       publishAccess("RFID_CARD", lastCardUid().c_str(), true);
       return;
@@ -239,6 +249,7 @@ void handleTamperAlarm() {
       if (pinMatchesHome()) {
         failCount = 0;
         pinClear();
+        publishAccess("PIN", "", true);
         enterState(STATE_UNLOCKED);
         publishAccess("PIN", "", true);
         return;
@@ -276,6 +287,12 @@ void setup() {
 void loop() {
   alertsUpdate();
   mqttLoop();
+
+  static unsigned long lastStatePub = 0;
+  if (millis() - lastStatePub >= STATE_PUBLISH_MS) {
+    lastStatePub = millis();
+    publishState();
+  }
 
   switch (state) {
     case STATE_LOCKED:            handleLocked();          break;
