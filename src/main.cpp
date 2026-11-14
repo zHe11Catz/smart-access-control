@@ -34,7 +34,15 @@ const char* stateName(State s) {
 // ---------- Entry action: chạy 1 lần khi vào trạng thái ----------
 void enterState(State next) {
   const bool stateChanged = (state != next);
-  Serial.printf("[FSM] %s -> %s\r\n", stateName(state), stateName(next));
+  if (stateChanged) {
+    Serial.printf("[FSM] %s -> %s\r\n", stateName(state), stateName(next));
+  } else {
+    static bool initialLogged = false;
+    if (!initialLogged) {
+      Serial.printf("[FSM] Khoi tao trang thai: %s\r\n", stateName(next));
+      initialLogged = true;
+    }
+  }
   state = next;
   stateEnterTime = millis();
 

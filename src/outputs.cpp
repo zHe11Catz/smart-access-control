@@ -116,9 +116,6 @@ void outputsInit() {
   ESP32PWM::allocateTimer(3);
   lockServo.setPeriodHertz(50);
   lockServo.attach(SERVO_PIN, 500, 2400);
-
-  // Mặc định chốt cửa ở trạng thái khóa
-  lockDoor();
 }
 
 // ============================================================

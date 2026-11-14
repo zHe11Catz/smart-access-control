@@ -115,9 +115,6 @@ void mqttLoop() {
                  "{\"device_id\":\"%s\",\"status\":\"online\"}",
                  DEVICE_ID);
         mqttPublish(TOPIC_STATUS, statusPayload, true);
-
-        // Gửi bản tin thử nghiệm để MQTT Explorer nhận được ngay
-        publishTestMessage();
       } else {
         Serial.printf("[MQTT] Connection failed, rc=%d. Retrying in %lu ms...\r\n",
                       mqttClient.state(), MQTT_RETRY_MS);
