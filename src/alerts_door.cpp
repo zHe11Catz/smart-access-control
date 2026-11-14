@@ -12,6 +12,32 @@ static bool reminderActive = false;
 static bool reminderBuzzerState = false;
 static unsigned long reminderCycleStart = 0;
 
+static bool currentBuzzerState = false;
+static unsigned int currentBuzzerFreq = 0;
+
+// Hàm điều khiển còi thụ động bằng tone() để phát âm thanh thật trên Wokwi
+static void setBuzzerHardware(bool on, unsigned int freq = 2000)
+{
+  if (on)
+  {
+    if (!currentBuzzerState || currentBuzzerFreq != freq)
+    {
+      tone(BUZZER_PIN, freq);
+      currentBuzzerState = true;
+      currentBuzzerFreq = freq;
+    }
+  }
+  else
+  {
+    if (currentBuzzerState)
+    {
+      noTone(BUZZER_PIN);
+      currentBuzzerState = false;
+      currentBuzzerFreq = 0;
+    }
+  }
+}
+
 // Trạng thái LED
 static bool ledBlinkActive = false;
 static bool ledBlinkState = false;
@@ -28,7 +54,7 @@ void alertsInit()
   pinMode(LED_PIN, OUTPUT);
   pinMode(DOOR_PIN, INPUT_PULLUP);
 
-  digitalWrite(BUZZER_PIN, LOW);
+  setBuzzerHardware(false);
   digitalWrite(LED_PIN, LOW);
 
   int raw = digitalRead(DOOR_PIN);
@@ -53,6 +79,7 @@ void alertsUpdate()
 
   // 2. Tính mức còi mong muốn theo ưu tiên: Alarm > Reminder > BeepOnce
   bool buzzerOn = false;
+  unsigned int buzzerFreq = 2000;
 
   if (alarmActive)
   {
@@ -62,6 +89,7 @@ void alertsUpdate()
       alarmBuzzerState = !alarmBuzzerState;
     }
     buzzerOn = alarmBuzzerState;
+    buzzerFreq = 2500;
   }
   else if (reminderActive)
   {
@@ -72,16 +100,21 @@ void alertsUpdate()
       elapsed = millis() - reminderCycleStart;
     }
     buzzerOn = (elapsed < REMINDER_BEEP_MS);
+    buzzerFreq = 2000;
   }
 
   // 3. Bíp đơn lẻ: chỉ hết hạn độc lập, không bị chặn bởi nhánh trên
   if (beepEndTime != 0)
   {
     if ((long)(millis() - beepEndTime) >= 0) beepEndTime = 0;
-    else buzzerOn = true;
+    else
+    {
+      buzzerOn = true;
+      if (!alarmActive) buzzerFreq = 2000;
+    }
   }
 
-  digitalWrite(BUZZER_PIN, buzzerOn ? HIGH : LOW);
+  setBuzzerHardware(buzzerOn, buzzerFreq);
 
   // 4. Pattern chớp LED đỏ
   if (ledBlinkActive)
@@ -101,7 +134,7 @@ void beepOnce(unsigned long ms)
   beepEndTime = millis() + ms;
   if (!alarmActive && (!reminderActive || !reminderBuzzerState))
   {
-    digitalWrite(BUZZER_PIN, HIGH);
+    setBuzzerHardware(true, 2000);
   }
 }
 
@@ -115,7 +148,7 @@ void alarmStart()
   alarmActive = true;
   alarmBuzzerState = true;
   lastAlarmToggle = millis();
-  digitalWrite(BUZZER_PIN, HIGH);
+  setBuzzerHardware(true, 2500);
 }
 
 void alarmStop()
@@ -126,11 +159,11 @@ void alarmStop()
   {
     reminderCycleStart = millis();
     reminderBuzzerState = true;
-    digitalWrite(BUZZER_PIN, HIGH);
+    setBuzzerHardware(true, 2000);
   }
   else if (beepEndTime == 0)
   {
-    digitalWrite(BUZZER_PIN, LOW);
+    setBuzzerHardware(false);
   }
 }
 
@@ -141,7 +174,7 @@ void reminderStart()
   reminderBuzzerState = true;
   if (!alarmActive)
   {
-    digitalWrite(BUZZER_PIN, HIGH);
+    setBuzzerHardware(true, 2000);
   }
 }
 
@@ -151,7 +184,7 @@ void reminderStop()
   reminderBuzzerState = false;
   if (!alarmActive && beepEndTime == 0)
   {
-    digitalWrite(BUZZER_PIN, LOW);
+    setBuzzerHardware(false);
   }
 }
 
